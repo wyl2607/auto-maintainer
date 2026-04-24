@@ -48,6 +48,18 @@ cd ~/Developer/auto-maintainer
 
 Details are in `docs/macbook-air-sync.md`.
 
+Check a machine after setup:
+
+```bash
+auto-maintainer doctor --repo wyl2607/auto-maintainer --local-path .
+```
+
+Check whether a checkout is synced with GitHub:
+
+```bash
+auto-maintainer sync-status --repo wyl2607/auto-maintainer --local-path .
+```
+
 ## Analyze A Repo
 
 ```bash
@@ -95,6 +107,8 @@ auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-rese
 ```
 
 `--create-draft-pr` pushes the current target branch and opens a draft PR with the execution plan in the body. It refuses to create a PR from the default branch and still never merges.
+
+If an open PR already exists for the branch, the tool reuses that PR instead of failing or creating a duplicate.
 
 Reuse a previously saved plan:
 

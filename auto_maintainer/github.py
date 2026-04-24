@@ -46,6 +46,21 @@ def run_gh_text(args: list[str], *, allow_failure: bool = False, timeout: int = 
 
 
 def create_draft_pr(repo: str, base: str, head: str, title: str, body: str) -> dict[str, Any]:
+    existing = run_gh_json(
+        ["pr", "list", "--repo", repo, "--head", head, "--state", "open", "--json", "number,url,title,isDraft,baseRefName,headRefName"],
+        allow_failure=True,
+    ) or []
+    if existing:
+        pr = existing[0]
+        return {
+            "url": pr.get("url"),
+            "base": pr.get("baseRefName", base),
+            "head": pr.get("headRefName", head),
+            "title": pr.get("title", title),
+            "draft": bool(pr.get("isDraft")),
+            "existing": True,
+            "number": pr.get("number"),
+        }
     url = run_gh_text(
         [
             "pr",
@@ -64,4 +79,4 @@ def create_draft_pr(repo: str, base: str, head: str, title: str, body: str) -> d
         ]
     )
     pr_url = (url or "").strip().splitlines()[-1]
-    return {"url": pr_url, "base": base, "head": head, "title": title, "draft": True}
+    return {"url": pr_url, "base": base, "head": head, "title": title, "draft": True, "existing": False}

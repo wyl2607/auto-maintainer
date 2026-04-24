@@ -7,7 +7,8 @@ from pathlib import Path
 from auto_maintainer.analyzer import analyze_repo
 from auto_maintainer.ci_watcher import evaluate_merge_gate, watch_and_classify
 from auto_maintainer.config import load_config
-from auto_maintainer.git_ops import GitError, create_branch, current_branch, ensure_clean_worktree, push_branch
+from auto_maintainer.doctor import get_last_ci_status, run_doctor
+from auto_maintainer.git_ops import GitError, create_branch, current_branch, ensure_clean_worktree, push_branch, sync_status
 from auto_maintainer.github import create_draft_pr
 from auto_maintainer.planner import build_execution_plan
 from auto_maintainer.reporting import (
@@ -38,6 +39,10 @@ def main(argv: list[str] | None = None) -> int:
         return report_command(args)
     if args.command == "merge-gate":
         return merge_gate_command(args)
+    if args.command == "doctor":
+        return doctor_command(args)
+    if args.command == "sync-status":
+        return sync_status_command(args)
     parser.print_help()
     return 2
 
@@ -86,6 +91,18 @@ def build_parser() -> argparse.ArgumentParser:
     merge_gate.add_argument("--repo", required=True, help="GitHub repo in OWNER/NAME format.")
     merge_gate.add_argument("--pr", required=True, help="PR number or URL.")
     merge_gate.add_argument("--json", action="store_true")
+
+    doctor = subparsers.add_parser("doctor", help="Check local environment readiness.")
+    doctor.add_argument("--repo", help="Optional GitHub repo in OWNER/NAME format to check access.")
+    doctor.add_argument("--local-path", type=Path, help="Optional local checkout to inspect.")
+    doctor.add_argument("--json", action="store_true")
+
+    sync = subparsers.add_parser("sync-status", help="Check whether a local checkout is synced with origin/main.")
+    sync.add_argument("--repo", help="Optional GitHub repo in OWNER/NAME format for latest CI lookup.")
+    sync.add_argument("--local-path", type=Path, default=Path("."), help="Local checkout path.")
+    sync.add_argument("--remote", default="origin")
+    sync.add_argument("--branch", default="main")
+    sync.add_argument("--json", action="store_true")
     return parser
 
 
@@ -268,6 +285,37 @@ def report_command(args: argparse.Namespace) -> int:
         if args.latest:
             print(path.read_text(encoding="utf-8"))
     return 0
+
+
+def doctor_command(args: argparse.Namespace) -> int:
+    result = run_doctor(repo=args.repo, local_path=args.local_path)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"OK: {result['ok']}")
+        for check in result["checks"]:
+            print(f"{'PASS' if check['ok'] else 'FAIL'} {check['name']}: {check['detail']}")
+    return 0 if result["ok"] else 1
+
+
+def sync_status_command(args: argparse.Namespace) -> int:
+    try:
+        status = sync_status(args.local_path, remote=args.remote, branch=args.branch)
+    except GitError as exc:
+        raise SystemExit(str(exc)) from exc
+    result = {"sync": status}
+    if args.repo:
+        result["last_ci"] = get_last_ci_status(args.repo, args.branch)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"Branch: {status['current_branch']}")
+        print(f"Ahead: {status['ahead']}; Behind: {status['behind']}; Dirty: {status['dirty']}")
+        print(f"Up to date: {status['up_to_date']}")
+        if args.repo:
+            ci = result["last_ci"]
+            print(f"Last CI: {ci.get('status')}/{ci.get('conclusion')} {ci.get('url', '')}".rstrip())
+    return 0 if status["up_to_date"] else 1
 
 
 if __name__ == "__main__":
