@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import zipfile
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -91,6 +92,48 @@ def write_handoff(plan: ExecutionPlan, local_path: Path) -> Path:
     path = auto_dir / "handoff.md"
     path.write_text(render_handoff_markdown(plan, local_path), encoding="utf-8")
     return path
+
+
+def write_pr_report(config: Config, pr: dict[str, Any], plan: ExecutionPlan, run_id: str | None = None) -> Path:
+    run_id = run_id or new_run_id()
+    report_dir = config.report_dir / run_id
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "pr.json").write_text(json.dumps(_jsonable(pr), indent=2, ensure_ascii=False), encoding="utf-8")
+    path = report_dir / "pr-report.md"
+    path.write_text(render_pr_markdown(config, pr, plan, run_id), encoding="utf-8")
+    return path
+
+
+def build_pr_body(plan: ExecutionPlan) -> str:
+    lines = [
+        "## Summary",
+        f"- Draft PR created from auto-maintainer candidate `{plan.candidate.id}`.",
+        f"- Worker: `{plan.worker}`; reviewer: `{plan.reviewer}`.",
+        "",
+        "## Scope",
+        f"- {plan.candidate.title}",
+        f"- Reason: {plan.candidate.reason}",
+        "",
+        "## Verification",
+    ]
+    lines.extend(f"- `{command}`" for command in plan.verification_commands)
+    lines.extend(["", "## Stop Conditions"])
+    lines.extend(f"- {condition}" for condition in plan.stop_conditions)
+    lines.extend(["", "## Merge Gate", "- Draft PR only. Do not merge until CI is green and a human confirms scope.", ""])
+    return "\n".join(lines)
+
+
+def bundle_reports(report_dir: Path, run_id: str | None = None) -> Path | None:
+    target_dir = _run_dir(report_dir, run_id)
+    if target_dir is None:
+        return None
+    bundle_path = target_dir / "bundle.zip"
+    with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as bundle:
+        for path in sorted(target_dir.iterdir()):
+            if path == bundle_path or not path.is_file():
+                continue
+            bundle.write(path, path.name)
+    return bundle_path
 
 
 def render_markdown(config: Config, state: RepoState, candidates: list[Candidate], run_id: str) -> str:
@@ -230,6 +273,35 @@ def render_handoff_markdown(plan: ExecutionPlan, local_path: Path) -> str:
     lines.extend(f"- `{command}`" for command in plan.verification_commands)
     lines.append("")
     return "\n".join(lines)
+
+
+def render_pr_markdown(config: Config, pr: dict[str, Any], plan: ExecutionPlan, run_id: str) -> str:
+    lines = [
+        "# Auto Maintainer PR Report",
+        "",
+        "## Summary",
+        f"- Run ID: `{run_id}`",
+        f"- Repo: `{config.repo.slug}`",
+        f"- PR: {pr.get('url')}",
+        f"- Draft: `{pr.get('draft')}`",
+        f"- Base: `{pr.get('base')}`",
+        f"- Head: `{pr.get('head')}`",
+        "",
+        "## Candidate",
+        f"- `{plan.candidate.id}` {plan.candidate.title}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _run_dir(report_dir: Path, run_id: str | None) -> Path | None:
+    if run_id:
+        path = report_dir / run_id
+        return path if path.exists() else None
+    if not report_dir.exists():
+        return None
+    run_dirs = sorted((path for path in report_dir.iterdir() if path.is_dir()), key=lambda path: path.name, reverse=True)
+    return run_dirs[0] if run_dirs else None
 
 
 def _jsonable(value: Any) -> Any:

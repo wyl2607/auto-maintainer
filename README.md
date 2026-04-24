@@ -68,6 +68,14 @@ auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-rese
 
 `--execute-plan` still does not edit files, commit, push, open PRs, or merge. It requires a clean target worktree by default and writes `.auto-maintainer/handoff.md` in the target repo.
 
+Create a draft PR from the current target branch:
+
+```bash
+auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-research-toolkit --create-draft-pr --json
+```
+
+`--create-draft-pr` pushes the current target branch and opens a draft PR with the execution plan in the body. It refuses to create a PR from the default branch and still never merges.
+
 ## Reports
 
 Show the latest generated report:
@@ -76,10 +84,22 @@ Show the latest generated report:
 auto-maintainer report --latest
 ```
 
+Bundle the latest run artifacts:
+
+```bash
+auto-maintainer report --bundle
+```
+
 Write a CI classification report:
 
 ```bash
 auto-maintainer watch-ci --repo wyl2607/esg-research-toolkit --pr 123 --write-report --json
+```
+
+Track bounded CI attempts for a run:
+
+```bash
+auto-maintainer watch-ci --repo wyl2607/esg-research-toolkit --pr 123 --write-report --run-id 20260424T200731Z --json
 ```
 
 Failure categories:
@@ -160,7 +180,7 @@ Use JSON for the first version:
 
 ## Current Limitations
 
-- Read-only analysis, dry-run planning, safe branch handoff, and CI classification only.
+- Read-only analysis, dry-run planning, safe branch handoff, draft PR creation, artifact bundling, and CI classification only.
 - No automatic branch creation, code edits, PR creation, or merge in v0.1.
 - Security alert visibility depends on GitHub token scopes and repo settings.
 - Backlog parsing is intentionally simple and line-based.

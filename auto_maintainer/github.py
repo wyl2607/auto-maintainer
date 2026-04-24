@@ -43,3 +43,25 @@ def run_gh_text(args: list[str], *, allow_failure: bool = False, timeout: int = 
         message = stderr.strip() or stdout.strip() or "gh command failed"
         raise GitHubCliError(message)
     return stdout
+
+
+def create_draft_pr(repo: str, base: str, head: str, title: str, body: str) -> dict[str, Any]:
+    url = run_gh_text(
+        [
+            "pr",
+            "create",
+            "--repo",
+            repo,
+            "--base",
+            base,
+            "--head",
+            head,
+            "--title",
+            title,
+            "--body",
+            body,
+            "--draft",
+        ]
+    )
+    pr_url = (url or "").strip().splitlines()[-1]
+    return {"url": pr_url, "base": base, "head": head, "title": title, "draft": True}

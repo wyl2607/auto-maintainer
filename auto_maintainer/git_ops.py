@@ -22,6 +22,10 @@ def current_branch(path: Path) -> str:
     return run_git(["branch", "--show-current"], path).strip()
 
 
+def push_branch(path: Path, remote: str, branch_name: str) -> None:
+    run_git(["push", "-u", remote, branch_name], path)
+
+
 def run_git(args: list[str], path: Path) -> str:
     result = subprocess.run(
         ["git", *args],
