@@ -63,6 +63,36 @@ def write_plan_report(config: Config, state: RepoState, candidates: list[Candida
     return path
 
 
+def latest_report(report_dir: Path) -> Path | None:
+    if not report_dir.exists():
+        return None
+    run_dirs = sorted((path for path in report_dir.iterdir() if path.is_dir()), key=lambda path: path.name, reverse=True)
+    for run_dir in run_dirs:
+        for name in ("execution-plan.md", "ci-report.md", "final-report.md"):
+            path = run_dir / name
+            if path.exists():
+                return path
+    return None
+
+
+def write_ci_report(config: Config, pr: str, result: dict[str, Any], run_id: str | None = None) -> Path:
+    run_id = run_id or new_run_id()
+    report_dir = config.report_dir / run_id
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "ci-result.json").write_text(json.dumps(_jsonable(result), indent=2, ensure_ascii=False), encoding="utf-8")
+    path = report_dir / "ci-report.md"
+    path.write_text(render_ci_markdown(config, pr, result, run_id), encoding="utf-8")
+    return path
+
+
+def write_handoff(plan: ExecutionPlan, local_path: Path) -> Path:
+    auto_dir = local_path / ".auto-maintainer"
+    auto_dir.mkdir(parents=True, exist_ok=True)
+    path = auto_dir / "handoff.md"
+    path.write_text(render_handoff_markdown(plan, local_path), encoding="utf-8")
+    return path
+
+
 def render_markdown(config: Config, state: RepoState, candidates: list[Candidate], run_id: str) -> str:
     selected = select_candidate(candidates)
     lines = [
@@ -141,6 +171,63 @@ def render_plan_markdown(config: Config, state: RepoState, candidates: list[Cand
         lines.append(
             f"| {candidate.id} | {candidate.source.value} | {candidate.score} | {candidate.decision.value if candidate.decision else 'unset'} |"
         )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_ci_markdown(config: Config, pr: str, result: dict[str, Any], run_id: str) -> str:
+    lines = [
+        "# Auto Maintainer CI Report",
+        "",
+        "## Summary",
+        f"- Run ID: `{run_id}`",
+        f"- Repo: `{config.repo.slug}`",
+        f"- PR: `{pr}`",
+        f"- Status: `{result.get('status')}`",
+        f"- Classification: `{result.get('classification')}`",
+        "",
+        "## Failed Checks",
+    ]
+    failed = result.get("failed_checks") or []
+    if not failed:
+        lines.append("- None")
+    for check in failed:
+        lines.append(f"- `{check.get('workflowName') or check.get('name')}` {check.get('detailsUrl') or ''}".rstrip())
+    lines.extend(["", "## Evidence"])
+    evidence = result.get("evidence") or []
+    if not evidence:
+        lines.append("- None")
+    for item in evidence[:5]:
+        excerpt = str(item.get("excerpt", "")).strip().replace("\n", " ")[:500]
+        lines.append(f"- `{item.get('category', 'unknown')}`: {excerpt}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_handoff_markdown(plan: ExecutionPlan, local_path: Path) -> str:
+    lines = [
+        "# Auto Maintainer Worker Handoff",
+        "",
+        "## Assignment",
+        f"- Controller: `{plan.controller}`",
+        f"- Worker: `{plan.worker}`",
+        f"- Reviewer: `{plan.reviewer}`",
+        f"- Local path: `{local_path}`",
+        f"- Branch: `{plan.branch_name}`",
+        "",
+        "## Candidate",
+        f"- ID: `{plan.candidate.id}`",
+        f"- Title: {plan.candidate.title}",
+        f"- Reason: {plan.candidate.reason}",
+        "",
+        "## Requirements",
+        "- Make the smallest scoped change that addresses only this candidate.",
+        "- Do not change auth, permissions, deployment, secrets, schema, public API deletion, major upgrades, or large refactors without confirmation.",
+        "- Stop if the worktree has unrelated changes or the fix expands beyond this task.",
+        "",
+        "## Verification",
+    ]
+    lines.extend(f"- `{command}`" for command in plan.verification_commands)
     lines.append("")
     return "\n".join(lines)
 

@@ -7,8 +7,9 @@ from pathlib import Path
 from auto_maintainer.analyzer import analyze_repo
 from auto_maintainer.ci_watcher import watch_and_classify
 from auto_maintainer.config import load_config
+from auto_maintainer.git_ops import GitError, create_branch, ensure_clean_worktree
 from auto_maintainer.planner import build_execution_plan
-from auto_maintainer.reporting import write_plan_report, write_run_report
+from auto_maintainer.reporting import latest_report, write_ci_report, write_handoff, write_plan_report, write_run_report
 from auto_maintainer.scoring import apply_gates, select_candidate
 
 
@@ -21,6 +22,8 @@ def main(argv: list[str] | None = None) -> int:
         return watch_ci_command(args)
     if args.command == "run":
         return run_command(args)
+    if args.command == "report":
+        return report_command(args)
     parser.print_help()
     return 2
 
@@ -40,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--local-path", type=Path, help="Optional local checkout for docs backlog scanning.")
     run.add_argument("--config", type=Path, help="Optional JSON config file.")
     run.add_argument("--dry-run", action="store_true", default=True, help="Plan only; do not mutate repos. Enabled by default.")
+    run.add_argument("--execute-plan", action="store_true", help="Create the planned branch and write a worker handoff file.")
     run.add_argument("--json", action="store_true", help="Print machine-readable plan summary.")
 
     watch = subparsers.add_parser("watch-ci", help="Watch a PR and classify failures.")
@@ -47,7 +51,15 @@ def build_parser() -> argparse.ArgumentParser:
     watch.add_argument("--pr", required=True, help="PR number or URL.")
     watch.add_argument("--timeout", type=int, default=1800)
     watch.add_argument("--poll", type=int, default=20)
+    watch.add_argument("--config", type=Path, help="Optional JSON config file for report output settings.")
+    watch.add_argument("--write-report", action="store_true", help="Write a CI classification report.")
     watch.add_argument("--json", action="store_true")
+
+    report = subparsers.add_parser("report", help="Show the latest generated report.")
+    report.add_argument("--config", type=Path, help="Optional JSON config file.")
+    report.add_argument("--repo", help="GitHub repo in OWNER/NAME format, used only with config overrides.")
+    report.add_argument("--latest", action="store_true", help="Print the latest report path and contents.")
+    report.add_argument("--json", action="store_true")
     return parser
 
 
@@ -81,11 +93,20 @@ def analyze_command(args: argparse.Namespace) -> int:
 
 def watch_ci_command(args: argparse.Namespace) -> int:
     result = watch_and_classify(args.repo, args.pr, timeout_seconds=args.timeout, poll_seconds=args.poll)
+    report_path = None
+    if args.write_report:
+        config = load_config(args.config, repo_slug=args.repo)
+        report_path = write_ci_report(config, args.pr, result)
     if args.json:
-        print(json.dumps(result, indent=2))
+        output = dict(result)
+        if report_path:
+            output["report"] = str(report_path)
+        print(json.dumps(output, indent=2))
     else:
         print(f"Status: {result['status']}")
         print(f"Classification: {result['classification']}")
+        if report_path:
+            print(f"Report: {report_path}")
         for check in result["failed_checks"]:
             print(f"Failed: {check.get('workflowName') or check.get('name')} {check.get('detailsUrl') or ''}")
     return 0 if result["status"] == "passed" else 1
@@ -114,15 +135,28 @@ def run_command(args: argparse.Namespace) -> int:
             print(f"No candidate passed gates. Report: {report_path}")
         return 0
 
-    plan = build_execution_plan(selected, config, dry_run=True)
+    execute_plan = bool(args.execute_plan)
+    plan = build_execution_plan(selected, config, dry_run=not execute_plan)
     plan_path = write_plan_report(config, state, candidates, plan)
+    handoff_path = None
+    if execute_plan:
+        if config.repo.local_path is None:
+            raise SystemExit("--execute-plan requires --local-path or config repo.local_path")
+        try:
+            if config.execution.require_clean_worktree:
+                ensure_clean_worktree(config.repo.local_path)
+            create_branch(config.repo.local_path, plan.branch_name)
+            handoff_path = write_handoff(plan, config.repo.local_path)
+        except GitError as exc:
+            raise SystemExit(str(exc)) from exc
     if args.json:
         print(
             json.dumps(
                 {
                     "repo": config.repo.slug,
-                    "outcome": "planned",
+                    "outcome": "branch_created" if execute_plan else "planned",
                     "plan": str(plan_path),
+                    "handoff": str(handoff_path) if handoff_path else None,
                     "selected": selected.id,
                     "worker": plan.worker,
                     "reviewer": plan.reviewer,
@@ -135,6 +169,27 @@ def run_command(args: argparse.Namespace) -> int:
         print(f"Plan: {plan_path}")
         print(f"Selected: {selected.id} - {selected.title}")
         print(f"Worker: {plan.worker}; Reviewer: {plan.reviewer}")
+        if handoff_path:
+            print(f"Handoff: {handoff_path}")
+    return 0
+
+
+def report_command(args: argparse.Namespace) -> int:
+    repo_slug = args.repo or "local/report-only"
+    config = load_config(args.config, repo_slug=repo_slug)
+    path = latest_report(config.report_dir)
+    if path is None:
+        if args.json:
+            print(json.dumps({"report": None, "outcome": "not_found"}, indent=2))
+        else:
+            print("No reports found.")
+        return 1
+    if args.json:
+        print(json.dumps({"report": str(path), "outcome": "found"}, indent=2))
+    else:
+        print(path)
+        if args.latest:
+            print(path.read_text(encoding="utf-8"))
     return 0
 
 

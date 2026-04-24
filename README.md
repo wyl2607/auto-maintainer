@@ -60,6 +60,28 @@ auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-rese
 
 `run` currently creates an execution plan only. It selects the top candidate that passes gates, assigns controller/worker/reviewer roles, suggests a branch name, lists verification commands, and records stop conditions. It does not create branches, edit code, push, open PRs, or merge.
 
+To create only the planned branch and write a worker handoff file:
+
+```bash
+auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-research-toolkit --execute-plan --json
+```
+
+`--execute-plan` still does not edit files, commit, push, open PRs, or merge. It requires a clean target worktree by default and writes `.auto-maintainer/handoff.md` in the target repo.
+
+## Reports
+
+Show the latest generated report:
+
+```bash
+auto-maintainer report --latest
+```
+
+Write a CI classification report:
+
+```bash
+auto-maintainer watch-ci --repo wyl2607/esg-research-toolkit --pr 123 --write-report --json
+```
+
 Failure categories:
 
 - `dependency_install_failure`
@@ -138,7 +160,7 @@ Use JSON for the first version:
 
 ## Current Limitations
 
-- Read-only analysis, dry-run planning, and CI classification only.
+- Read-only analysis, dry-run planning, safe branch handoff, and CI classification only.
 - No automatic branch creation, code edits, PR creation, or merge in v0.1.
 - Security alert visibility depends on GitHub token scopes and repo settings.
 - Backlog parsing is intentionally simple and line-based.

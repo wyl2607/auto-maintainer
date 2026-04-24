@@ -92,6 +92,14 @@ class ExecutionPlan:
 
 
 @dataclass
+class Handoff:
+    plan: ExecutionPlan
+    local_path: Path
+    branch_created: bool
+    handoff_path: Path
+
+
+@dataclass
 class RepoState:
     open_prs: list[dict]
     open_issues: list[dict]
