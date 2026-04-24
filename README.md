@@ -52,6 +52,14 @@ It writes a report under `state/runs/<run-id>/final-report.md`.
 auto-maintainer watch-ci --repo wyl2607/esg-research-toolkit --pr 123 --json
 ```
 
+## Plan A Dry Run
+
+```bash
+auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-research-toolkit --json
+```
+
+`run` currently creates an execution plan only. It selects the top candidate that passes gates, assigns controller/worker/reviewer roles, suggests a branch name, lists verification commands, and records stop conditions. It does not create branches, edit code, push, open PRs, or merge.
+
 Failure categories:
 
 - `dependency_install_failure`
@@ -114,6 +122,11 @@ Use JSON for the first version:
     "max_total_runtime_minutes": 90,
     "require_clean_worktree": true
   },
+  "agents": {
+    "controller": "macbook-air",
+    "worker": "opencode",
+    "reviewer": "coco"
+  },
   "merge": {
     "mode": "ask_before_merge"
   },
@@ -125,7 +138,7 @@ Use JSON for the first version:
 
 ## Current Limitations
 
-- Read-only analysis and CI classification only.
+- Read-only analysis, dry-run planning, and CI classification only.
 - No automatic branch creation, code edits, PR creation, or merge in v0.1.
 - Security alert visibility depends on GitHub token scopes and repo settings.
 - Backlog parsing is intentionally simple and line-based.

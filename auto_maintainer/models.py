@@ -52,10 +52,18 @@ class ExecutionLimits:
 
 
 @dataclass
+class AgentConfig:
+    controller: str = "local"
+    worker: str = "opencode"
+    reviewer: str = "manual"
+
+
+@dataclass
 class Config:
     repo: RepoRef
     gates: Gates = field(default_factory=Gates)
     execution: ExecutionLimits = field(default_factory=ExecutionLimits)
+    agents: AgentConfig = field(default_factory=AgentConfig)
     report_dir: Path = Path("state/runs")
     merge_mode: str = "ask_before_merge"
     require_confirmation_touches: tuple[str, ...] = (
@@ -68,6 +76,19 @@ class Config:
         "major_dependency_upgrade",
         "large_refactor",
     )
+
+
+@dataclass
+class ExecutionPlan:
+    candidate: Candidate
+    controller: str
+    worker: str
+    reviewer: str
+    dry_run: bool
+    branch_name: str
+    verification_commands: list[str]
+    stop_conditions: list[str]
+    next_steps: list[str]
 
 
 @dataclass

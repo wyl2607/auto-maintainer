@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from auto_maintainer.models import Candidate, Config, RepoState
+from auto_maintainer.models import Candidate, Config, ExecutionPlan, RepoState
 from auto_maintainer.scoring import select_candidate
 
 
@@ -36,6 +36,30 @@ def write_run_report(config: Config, state: RepoState, candidates: list[Candidat
     )
     path = report_dir / "final-report.md"
     path.write_text(render_markdown(config, state, candidates, run_id), encoding="utf-8")
+    return path
+
+
+def write_plan_report(config: Config, state: RepoState, candidates: list[Candidate], plan: ExecutionPlan, run_id: str | None = None) -> Path:
+    run_id = run_id or new_run_id()
+    report_dir = config.report_dir / run_id
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "plan.json").write_text(json.dumps(_jsonable(plan), indent=2, ensure_ascii=False), encoding="utf-8")
+    (report_dir / "summary.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "repo": config.repo.slug,
+                "plan": _jsonable(plan),
+                "state": _jsonable(state),
+                "candidates": [_jsonable(candidate) for candidate in candidates],
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    path = report_dir / "execution-plan.md"
+    path.write_text(render_plan_markdown(config, state, candidates, plan, run_id), encoding="utf-8")
     return path
 
 
@@ -84,6 +108,39 @@ def render_markdown(config: Config, state: RepoState, candidates: list[Candidate
         lines.append("- A candidate passed gates. Assign it to a worker before implementation.")
     else:
         lines.append("- No candidate passed automatic execution gates. Stop or request human confirmation.")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_plan_markdown(config: Config, state: RepoState, candidates: list[Candidate], plan: ExecutionPlan, run_id: str) -> str:
+    lines = [
+        "# Auto Maintainer Execution Plan",
+        "",
+        "## Summary",
+        f"- Run ID: `{run_id}`",
+        f"- Repo: `{config.repo.slug}`",
+        f"- Dry run: `{plan.dry_run}`",
+        f"- Candidate: `{plan.candidate.id}` {plan.candidate.title}",
+        f"- Decision: `{plan.candidate.decision.value if plan.candidate.decision else 'unset'}`",
+        f"- Planned branch: `{plan.branch_name}`",
+        "",
+        "## Assignment",
+        f"- Controller: `{plan.controller}`",
+        f"- Worker: `{plan.worker}`",
+        f"- Reviewer: `{plan.reviewer}`",
+        "",
+        "## Verification",
+    ]
+    lines.extend(f"- `{command}`" for command in plan.verification_commands)
+    lines.extend(["", "## Stop Conditions"])
+    lines.extend(f"- {condition}" for condition in plan.stop_conditions)
+    lines.extend(["", "## Next Steps"])
+    lines.extend(f"- {step}" for step in plan.next_steps)
+    lines.extend(["", "## Candidate Table", "| ID | Source | Score | Decision |", "| --- | --- | ---: | --- |"])
+    for candidate in candidates:
+        lines.append(
+            f"| {candidate.id} | {candidate.source.value} | {candidate.score} | {candidate.decision.value if candidate.decision else 'unset'} |"
+        )
     lines.append("")
     return "\n".join(lines)
 

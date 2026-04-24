@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from auto_maintainer.models import Config, ExecutionLimits, Gates, RepoRef
+from auto_maintainer.models import AgentConfig, Config, ExecutionLimits, Gates, RepoRef
 
 
 def load_config(path: Path | None, *, repo_slug: str | None = None, local_path: Path | None = None) -> Config:
@@ -15,6 +15,7 @@ def load_config(path: Path | None, *, repo_slug: str | None = None, local_path: 
 
     gates_data = data.get("gates", {})
     execution_data = data.get("execution", {})
+    agents_data = data.get("agents", {})
     reporting_data = data.get("reporting", {})
     merge_data = data.get("merge", {})
 
@@ -27,6 +28,7 @@ def load_config(path: Path | None, *, repo_slug: str | None = None, local_path: 
         ),
         gates=Gates(**{k: v for k, v in gates_data.items() if hasattr(Gates, k)}),
         execution=ExecutionLimits(**{k: v for k, v in execution_data.items() if hasattr(ExecutionLimits, k)}),
+        agents=AgentConfig(**{k: v for k, v in agents_data.items() if hasattr(AgentConfig, k)}),
         report_dir=Path(reporting_data.get("output_dir", "state/runs")),
         merge_mode=merge_data.get("mode", "ask_before_merge"),
         require_confirmation_touches=tuple(

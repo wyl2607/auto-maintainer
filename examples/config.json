@@ -16,6 +16,11 @@
     "max_total_runtime_minutes": 90,
     "require_clean_worktree": true
   },
+  "agents": {
+    "controller": "macbook-air",
+    "worker": "opencode",
+    "reviewer": "coco"
+  },
   "merge": {
     "mode": "ask_before_merge"
   },
