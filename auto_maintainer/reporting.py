@@ -64,6 +64,16 @@ def write_plan_report(config: Config, state: RepoState, candidates: list[Candida
     return path
 
 
+def load_plan(report_dir: Path, run_id: str | None = None) -> ExecutionPlan | None:
+    target_dir = _run_dir(report_dir, run_id)
+    if target_dir is None:
+        return None
+    path = target_dir / "plan.json"
+    if not path.exists():
+        return None
+    return _plan_from_dict(json.loads(path.read_text(encoding="utf-8")))
+
+
 def latest_report(report_dir: Path) -> Path | None:
     if not report_dir.exists():
         return None
@@ -86,10 +96,10 @@ def write_ci_report(config: Config, pr: str, result: dict[str, Any], run_id: str
     return path
 
 
-def write_handoff(plan: ExecutionPlan, local_path: Path) -> Path:
-    auto_dir = local_path / ".auto-maintainer"
-    auto_dir.mkdir(parents=True, exist_ok=True)
-    path = auto_dir / "handoff.md"
+def write_handoff(config: Config, plan: ExecutionPlan, local_path: Path, run_id: str | None = None) -> Path:
+    target_dir = _run_dir(config.report_dir, run_id) or config.report_dir / (run_id or new_run_id())
+    target_dir.mkdir(parents=True, exist_ok=True)
+    path = target_dir / "handoff.md"
     path.write_text(render_handoff_markdown(plan, local_path), encoding="utf-8")
     return path
 
@@ -302,6 +312,37 @@ def _run_dir(report_dir: Path, run_id: str | None) -> Path | None:
         return None
     run_dirs = sorted((path for path in report_dir.iterdir() if path.is_dir()), key=lambda path: path.name, reverse=True)
     return run_dirs[0] if run_dirs else None
+
+
+def _plan_from_dict(data: dict[str, Any]) -> ExecutionPlan:
+    from auto_maintainer.models import Candidate, CandidateSource, Decision
+
+    candidate_data = data["candidate"]
+    candidate = Candidate(
+        id=candidate_data["id"],
+        title=candidate_data["title"],
+        source=CandidateSource(candidate_data["source"]),
+        value=candidate_data["value"],
+        risk=candidate_data["risk"],
+        complexity=candidate_data["complexity"],
+        confidence=candidate_data["confidence"],
+        reason=candidate_data["reason"],
+        files=list(candidate_data.get("files", [])),
+        touches=list(candidate_data.get("touches", [])),
+        decision=Decision(candidate_data["decision"]) if candidate_data.get("decision") else None,
+        decision_reason=candidate_data.get("decision_reason", ""),
+    )
+    return ExecutionPlan(
+        candidate=candidate,
+        controller=data["controller"],
+        worker=data["worker"],
+        reviewer=data["reviewer"],
+        dry_run=data["dry_run"],
+        branch_name=data["branch_name"],
+        verification_commands=list(data.get("verification_commands", [])),
+        stop_conditions=list(data.get("stop_conditions", [])),
+        next_steps=list(data.get("next_steps", [])),
+    )
 
 
 def _jsonable(value: Any) -> Any:

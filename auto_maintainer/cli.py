@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from auto_maintainer.analyzer import analyze_repo
-from auto_maintainer.ci_watcher import watch_and_classify
+from auto_maintainer.ci_watcher import evaluate_merge_gate, watch_and_classify
 from auto_maintainer.config import load_config
 from auto_maintainer.git_ops import GitError, create_branch, current_branch, ensure_clean_worktree, push_branch
 from auto_maintainer.github import create_draft_pr
@@ -14,6 +14,7 @@ from auto_maintainer.reporting import (
     build_pr_body,
     bundle_reports,
     latest_report,
+    load_plan,
     write_ci_report,
     write_handoff,
     write_plan_report,
@@ -35,6 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_command(args)
     if args.command == "report":
         return report_command(args)
+    if args.command == "merge-gate":
+        return merge_gate_command(args)
     parser.print_help()
     return 2
 
@@ -58,6 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--create-draft-pr", action="store_true", help="Push current target branch and create a draft PR.")
     run.add_argument("--base", default=None, help="Base branch for draft PR creation. Defaults to config default branch.")
     run.add_argument("--remote", default="origin", help="Git remote to push when creating a draft PR.")
+    run.add_argument("--run-id", help="Run ID whose saved plan should be reused.")
     run.add_argument("--json", action="store_true", help="Print machine-readable plan summary.")
 
     watch = subparsers.add_parser("watch-ci", help="Watch a PR and classify failures.")
@@ -77,6 +81,11 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--bundle", action="store_true", help="Create bundle.zip for the latest run or --run-id.")
     report.add_argument("--run-id", help="Specific run ID for bundle creation.")
     report.add_argument("--json", action="store_true")
+
+    merge_gate = subparsers.add_parser("merge-gate", help="Check whether a PR satisfies read-only merge gates.")
+    merge_gate.add_argument("--repo", required=True, help="GitHub repo in OWNER/NAME format.")
+    merge_gate.add_argument("--pr", required=True, help="PR number or URL.")
+    merge_gate.add_argument("--json", action="store_true")
     return parser
 
 
@@ -113,7 +122,7 @@ def watch_ci_command(args: argparse.Namespace) -> int:
     report_path = None
     if args.write_report:
         config = load_config(args.config, repo_slug=args.repo)
-        report_path = write_ci_report(config, args.pr, result)
+        report_path = write_ci_report(config, args.pr, result, run_id=args.run_id)
         if args.run_id:
             state = record_ci_attempt(config.report_dir, args.run_id, result, config.execution.max_ci_fix_attempts)
             result["run_state"] = state
@@ -136,8 +145,9 @@ def run_command(args: argparse.Namespace) -> int:
     config = load_config(args.config, repo_slug=args.repo, local_path=args.local_path)
     state, candidates = analyze_repo(config)
     candidates = apply_gates(candidates, config)
+    saved_plan = load_plan(config.report_dir, args.run_id) if args.run_id else None
     selected = select_candidate(candidates)
-    if selected is None:
+    if selected is None and saved_plan is None:
         report_path = write_run_report(config, state, candidates)
         if args.json:
             print(
@@ -156,8 +166,12 @@ def run_command(args: argparse.Namespace) -> int:
         return 0
 
     execute_plan = bool(args.execute_plan)
-    plan = build_execution_plan(selected, config, dry_run=not execute_plan)
-    plan_path = write_plan_report(config, state, candidates, plan)
+    plan = saved_plan or build_execution_plan(selected, config, dry_run=not execute_plan)
+    plan_path = (
+        config.report_dir / args.run_id / "execution-plan.md"
+        if saved_plan is not None and args.run_id
+        else write_plan_report(config, state, candidates, plan, run_id=args.run_id)
+    )
     handoff_path = None
     pr = None
     if execute_plan:
@@ -167,7 +181,7 @@ def run_command(args: argparse.Namespace) -> int:
             if config.execution.require_clean_worktree:
                 ensure_clean_worktree(config.repo.local_path)
             create_branch(config.repo.local_path, plan.branch_name)
-            handoff_path = write_handoff(plan, config.repo.local_path)
+            handoff_path = write_handoff(config, plan, config.repo.local_path, run_id=args.run_id)
         except GitError as exc:
             raise SystemExit(str(exc)) from exc
     if args.create_draft_pr:
@@ -180,9 +194,9 @@ def run_command(args: argparse.Namespace) -> int:
             if branch == config.repo.default_branch:
                 raise SystemExit("Refusing to create a PR from the default branch.")
             push_branch(config.repo.local_path, args.remote, branch)
-            title = f"Auto-maintainer: {selected.title[:80]}"
+            title = f"Auto-maintainer: {plan.candidate.title[:80]}"
             pr = create_draft_pr(config.repo.slug, args.base or config.repo.default_branch, branch, title, build_pr_body(plan))
-            write_pr_report(config, pr, plan)
+            write_pr_report(config, pr, plan, run_id=args.run_id)
         except GitError as exc:
             raise SystemExit(str(exc)) from exc
     if args.json:
@@ -190,11 +204,11 @@ def run_command(args: argparse.Namespace) -> int:
             json.dumps(
                 {
                     "repo": config.repo.slug,
-                    "outcome": "branch_created" if execute_plan else "planned",
+                    "outcome": "draft_pr_created" if pr else "branch_created" if execute_plan else "planned",
                     "plan": str(plan_path),
                     "handoff": str(handoff_path) if handoff_path else None,
                     "pr": pr,
-                    "selected": selected.id,
+                    "selected": plan.candidate.id,
                     "worker": plan.worker,
                     "reviewer": plan.reviewer,
                     "dry_run": plan.dry_run,
@@ -211,6 +225,17 @@ def run_command(args: argparse.Namespace) -> int:
         if pr:
             print(f"Draft PR: {pr.get('url')}")
     return 0
+
+
+def merge_gate_command(args: argparse.Namespace) -> int:
+    result = evaluate_merge_gate(args.repo, args.pr)
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"Ready: {result['ready']}")
+        for blocker in result["blockers"]:
+            print(f"Blocker: {blocker}")
+    return 0 if result["ready"] else 1
 
 
 def report_command(args: argparse.Namespace) -> int:

@@ -68,6 +68,8 @@ auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-rese
 
 `--execute-plan` still does not edit files, commit, push, open PRs, or merge. It requires a clean target worktree by default and writes `.auto-maintainer/handoff.md` in the target repo.
 
+The handoff file is now written to the controller run directory as `state/runs/<run-id>/handoff.md`, so it does not dirty the target repository.
+
 Create a draft PR from the current target branch:
 
 ```bash
@@ -75,6 +77,12 @@ auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-rese
 ```
 
 `--create-draft-pr` pushes the current target branch and opens a draft PR with the execution plan in the body. It refuses to create a PR from the default branch and still never merges.
+
+Reuse a previously saved plan:
+
+```bash
+auto-maintainer run --repo wyl2607/esg-research-toolkit --local-path ../esg-research-toolkit --run-id 20260424T200731Z --create-draft-pr --json
+```
 
 ## Reports
 
@@ -101,6 +109,18 @@ Track bounded CI attempts for a run:
 ```bash
 auto-maintainer watch-ci --repo wyl2607/esg-research-toolkit --pr 123 --write-report --run-id 20260424T200731Z --json
 ```
+
+When `--run-id` is provided, the CI report and `state.json` are written to the same run directory.
+
+## Merge Gate
+
+Check whether a PR is ready to merge without merging it:
+
+```bash
+auto-maintainer merge-gate --repo wyl2607/esg-research-toolkit --pr 123 --json
+```
+
+The gate blocks on draft PRs, closed PRs, merge conflicts, failed checks, pending checks, and blocking review decisions.
 
 Failure categories:
 

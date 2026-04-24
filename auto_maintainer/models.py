@@ -79,27 +79,6 @@ class Config:
 
 
 @dataclass
-class ExecutionPlan:
-    candidate: Candidate
-    controller: str
-    worker: str
-    reviewer: str
-    dry_run: bool
-    branch_name: str
-    verification_commands: list[str]
-    stop_conditions: list[str]
-    next_steps: list[str]
-
-
-@dataclass
-class Handoff:
-    plan: ExecutionPlan
-    local_path: Path
-    branch_created: bool
-    handoff_path: Path
-
-
-@dataclass
 class RepoState:
     open_prs: list[dict]
     open_issues: list[dict]
@@ -125,6 +104,27 @@ class Candidate:
     @property
     def score(self) -> int:
         return self.value - self.risk - self.complexity + self.confidence
+
+
+@dataclass
+class ExecutionPlan:
+    candidate: Candidate
+    controller: str
+    worker: str
+    reviewer: str
+    dry_run: bool
+    branch_name: str
+    verification_commands: list[str]
+    stop_conditions: list[str]
+    next_steps: list[str]
+
+
+@dataclass
+class Handoff:
+    plan: ExecutionPlan
+    local_path: Path
+    branch_created: bool
+    handoff_path: Path
 
 
 @dataclass

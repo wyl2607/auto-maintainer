@@ -36,6 +36,44 @@ def watch_and_classify(repo: str, pr: str, *, timeout_seconds: int = 1800, poll_
     }
 
 
+def evaluate_merge_gate(repo: str, pr: str) -> dict[str, Any]:
+    pr_data = run_gh_json(
+        [
+            "pr",
+            "view",
+            pr,
+            "--repo",
+            repo,
+            "--json",
+            "number,state,isDraft,mergeStateStatus,reviewDecision,baseRefName,headRefName,url",
+        ]
+    )
+    checks = collect_check_runs(repo, pr)
+    failed = extract_failed_checks(checks)
+    pending = [check for check in checks if check.get("state") in PENDING_STATES or check.get("bucket") == "pending"]
+    blockers: list[str] = []
+    if pr_data.get("state") != "OPEN":
+        blockers.append("PR is not open.")
+    if pr_data.get("isDraft"):
+        blockers.append("PR is still draft.")
+    if pr_data.get("mergeStateStatus") == "DIRTY":
+        blockers.append("PR has merge conflicts.")
+    if failed:
+        blockers.append("PR has failed checks.")
+    if pending:
+        blockers.append("PR has pending checks.")
+    if pr_data.get("reviewDecision") in {"CHANGES_REQUESTED", "REVIEW_REQUIRED"}:
+        blockers.append(f"Review decision is {pr_data.get('reviewDecision')}.")
+    ready = not blockers
+    return {
+        "ready": ready,
+        "blockers": blockers,
+        "pr": pr_data,
+        "failed_checks": failed,
+        "pending_checks": pending,
+    }
+
+
 def wait_for_pr_checks(repo: str, pr: str, *, timeout_seconds: int = 1800, poll_seconds: int = 20) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_seconds
     last_checks: list[dict[str, Any]] = []

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from auto_maintainer.models import Candidate, CandidateSource, Config, ExecutionPlan, RepoRef
-from auto_maintainer.reporting import build_pr_body, bundle_reports, latest_report, render_handoff_markdown, write_ci_report
+from auto_maintainer.models import Candidate, CandidateSource, Config, ExecutionPlan, RepoRef, RepoState
+from auto_maintainer.reporting import build_pr_body, bundle_reports, latest_report, load_plan, render_handoff_markdown, write_ci_report, write_handoff, write_plan_report
 
 
 def make_plan() -> ExecutionPlan:
@@ -60,3 +60,24 @@ def test_build_pr_body_includes_stop_conditions():
 
     assert "## Stop Conditions" in body
     assert "Draft PR" in body
+
+
+def test_write_handoff_uses_report_directory(tmp_path: Path):
+    config = Config(repo=RepoRef("owner", "repo"), report_dir=tmp_path / "runs")
+    handoff = write_handoff(config, make_plan(), tmp_path / "target", "run1")
+
+    assert handoff == tmp_path / "runs" / "run1" / "handoff.md"
+    assert handoff.exists()
+    assert not (tmp_path / "target" / ".auto-maintainer").exists()
+
+
+def test_load_plan_round_trips_plan(tmp_path: Path):
+    config = Config(repo=RepoRef("owner", "repo"), report_dir=tmp_path)
+    plan = make_plan()
+    write_plan_report(config, state=RepoState(open_prs=[], open_issues=[], latest_checks=[], security_alerts=[]), candidates=[plan.candidate], plan=plan, run_id="run1")
+
+    loaded = load_plan(tmp_path, "run1")
+
+    assert loaded is not None
+    assert loaded.candidate.id == plan.candidate.id
+    assert loaded.branch_name == plan.branch_name
