@@ -60,6 +60,12 @@ Check whether a checkout is synced with GitHub:
 auto-maintainer sync-status --repo wyl2607/auto-maintainer --local-path .
 ```
 
+Create a starter config:
+
+```bash
+auto-maintainer init-config --repo wyl2607/esg-research-toolkit --local-path ../esg-research-toolkit
+```
+
 ## Analyze A Repo
 
 ```bash
@@ -153,6 +159,28 @@ auto-maintainer merge-gate --repo wyl2607/esg-research-toolkit --pr 123 --json
 ```
 
 The gate blocks on draft PRs, closed PRs, merge conflicts, failed checks, pending checks, and blocking review decisions.
+
+Write merge-gate artifacts into a run directory:
+
+```bash
+auto-maintainer merge-gate --repo wyl2607/esg-research-toolkit --pr 123 --write-report --run-id 20260424T200731Z --json
+```
+
+## Worker Handoff
+
+Render a worker prompt from the latest saved plan:
+
+```bash
+auto-maintainer handoff --repo wyl2607/esg-research-toolkit --local-path ../esg-research-toolkit --format prompt
+```
+
+Write the prompt into the run directory:
+
+```bash
+auto-maintainer handoff --repo wyl2607/esg-research-toolkit --run-id 20260424T200731Z --format prompt --write
+```
+
+Run directories include a `manifest.json` that records generated artifacts such as plans, reports, prompts, PR metadata, CI results, and bundles.
 
 Failure categories:
 

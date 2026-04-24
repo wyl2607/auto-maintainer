@@ -37,6 +37,8 @@ def write_run_report(config: Config, state: RepoState, candidates: list[Candidat
     )
     path = report_dir / "final-report.md"
     path.write_text(render_markdown(config, state, candidates, run_id), encoding="utf-8")
+    update_manifest(config.report_dir, run_id, "final_report", path)
+    update_manifest(config.report_dir, run_id, "summary", report_dir / "summary.json")
     return path
 
 
@@ -61,6 +63,9 @@ def write_plan_report(config: Config, state: RepoState, candidates: list[Candida
     )
     path = report_dir / "execution-plan.md"
     path.write_text(render_plan_markdown(config, state, candidates, plan, run_id), encoding="utf-8")
+    update_manifest(config.report_dir, run_id, "execution_plan", path)
+    update_manifest(config.report_dir, run_id, "plan", report_dir / "plan.json")
+    update_manifest(config.report_dir, run_id, "summary", report_dir / "summary.json")
     return path
 
 
@@ -93,6 +98,8 @@ def write_ci_report(config: Config, pr: str, result: dict[str, Any], run_id: str
     (report_dir / "ci-result.json").write_text(json.dumps(_jsonable(result), indent=2, ensure_ascii=False), encoding="utf-8")
     path = report_dir / "ci-report.md"
     path.write_text(render_ci_markdown(config, pr, result, run_id), encoding="utf-8")
+    update_manifest(config.report_dir, run_id, "ci_result", report_dir / "ci-result.json")
+    update_manifest(config.report_dir, run_id, "ci_report", path)
     return path
 
 
@@ -101,6 +108,18 @@ def write_handoff(config: Config, plan: ExecutionPlan, local_path: Path, run_id:
     target_dir.mkdir(parents=True, exist_ok=True)
     path = target_dir / "handoff.md"
     path.write_text(render_handoff_markdown(plan, local_path), encoding="utf-8")
+    if run_id:
+        update_manifest(config.report_dir, run_id, "handoff", path)
+    return path
+
+
+def write_worker_prompt(config: Config, plan: ExecutionPlan, local_path: Path, run_id: str | None = None) -> Path:
+    target_dir = _run_dir(config.report_dir, run_id) or config.report_dir / (run_id or new_run_id())
+    target_dir.mkdir(parents=True, exist_ok=True)
+    path = target_dir / "worker-prompt.md"
+    path.write_text(render_worker_prompt(plan, local_path), encoding="utf-8")
+    if run_id:
+        update_manifest(config.report_dir, run_id, "worker_prompt", path)
     return path
 
 
@@ -111,6 +130,20 @@ def write_pr_report(config: Config, pr: dict[str, Any], plan: ExecutionPlan, run
     (report_dir / "pr.json").write_text(json.dumps(_jsonable(pr), indent=2, ensure_ascii=False), encoding="utf-8")
     path = report_dir / "pr-report.md"
     path.write_text(render_pr_markdown(config, pr, plan, run_id), encoding="utf-8")
+    update_manifest(config.report_dir, run_id, "pr", report_dir / "pr.json")
+    update_manifest(config.report_dir, run_id, "pr_report", path)
+    return path
+
+
+def write_merge_gate_report(config: Config, pr: str, result: dict[str, Any], run_id: str | None = None) -> Path:
+    run_id = run_id or new_run_id()
+    report_dir = config.report_dir / run_id
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / "merge-gate.json").write_text(json.dumps(_jsonable(result), indent=2, ensure_ascii=False), encoding="utf-8")
+    path = report_dir / "merge-gate.md"
+    path.write_text(render_merge_gate_markdown(config, pr, result, run_id), encoding="utf-8")
+    update_manifest(config.report_dir, run_id, "merge_gate", report_dir / "merge-gate.json")
+    update_manifest(config.report_dir, run_id, "merge_gate_report", path)
     return path
 
 
@@ -143,7 +176,23 @@ def bundle_reports(report_dir: Path, run_id: str | None = None) -> Path | None:
             if path == bundle_path or not path.is_file():
                 continue
             bundle.write(path, path.name)
+    if target_dir.parent == report_dir:
+        update_manifest(report_dir, target_dir.name, "bundle", bundle_path)
     return bundle_path
+
+
+def update_manifest(report_dir: Path, run_id: str, key: str, path: Path) -> Path:
+    run_dir = report_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = run_dir / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {"run_id": run_id, "artifacts": {}}
+    try:
+        artifact_path = str(path.relative_to(run_dir))
+    except ValueError:
+        artifact_path = str(path)
+    manifest.setdefault("artifacts", {})[key] = artifact_path
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    return manifest_path
 
 
 def render_markdown(config: Config, state: RepoState, candidates: list[Candidate], run_id: str) -> str:
@@ -301,6 +350,59 @@ def render_pr_markdown(config: Config, pr: dict[str, Any], plan: ExecutionPlan, 
         f"- `{plan.candidate.id}` {plan.candidate.title}",
         "",
     ]
+    return "\n".join(lines)
+
+
+def render_merge_gate_markdown(config: Config, pr: str, result: dict[str, Any], run_id: str) -> str:
+    lines = [
+        "# Auto Maintainer Merge Gate",
+        "",
+        "## Summary",
+        f"- Run ID: `{run_id}`",
+        f"- Repo: `{config.repo.slug}`",
+        f"- PR: `{pr}`",
+        f"- Ready: `{result.get('ready')}`",
+        "",
+        "## Blockers",
+    ]
+    blockers = result.get("blockers") or []
+    if not blockers:
+        lines.append("- None")
+    else:
+        lines.extend(f"- {blocker}" for blocker in blockers)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def render_worker_prompt(plan: ExecutionPlan, local_path: Path) -> str:
+    lines = [
+        "You are the worker agent for an auto-maintainer task.",
+        "",
+        "Repository:",
+        f"- Path: `{local_path}`",
+        f"- Branch: `{plan.branch_name}`",
+        "",
+        "Task:",
+        f"- Candidate ID: `{plan.candidate.id}`",
+        f"- Title: {plan.candidate.title}",
+        f"- Reason: {plan.candidate.reason}",
+        "",
+        "Scope rules:",
+        "- Make the smallest correct change for this candidate only.",
+        "- Do not change auth, permissions, deployment, secrets, database schema, public API deletion, major dependency upgrades, or large refactors without confirmation.",
+        "- Stop and report if the worktree contains unrelated changes or the required fix expands beyond scope.",
+        "",
+        "Verification commands:",
+    ]
+    lines.extend(f"- `{command}`" for command in plan.verification_commands)
+    lines.extend([
+        "",
+        "Final response requirements:",
+        "- Summarize files changed.",
+        "- List verification commands and results.",
+        "- State whether the task is ready for PR/CI watch or blocked.",
+        "",
+    ])
     return "\n".join(lines)
 
 

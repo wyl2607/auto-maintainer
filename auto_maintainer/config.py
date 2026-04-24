@@ -62,3 +62,37 @@ def _split_repo(slug: str) -> tuple[str, str]:
 
 def _optional_path(value: str | None) -> Path | None:
     return Path(value) if value else None
+
+
+def default_config_json(repo_slug: str, local_path: Path | None = None) -> str:
+    data = {
+        "repo": {
+            "slug": repo_slug,
+            "local_path": str(local_path) if local_path else "../target-repo",
+            "default_branch": "main",
+        },
+        "gates": {
+            "value_min": 3,
+            "risk_max": 2,
+            "complexity_max": 2,
+            "confidence_min": 2,
+        },
+        "execution": {
+            "max_tasks_per_run": 1,
+            "max_ci_fix_attempts": 3,
+            "max_total_runtime_minutes": 90,
+            "require_clean_worktree": True,
+        },
+        "agents": {
+            "controller": "macbook-air",
+            "worker": "opencode",
+            "reviewer": "coco",
+        },
+        "merge": {
+            "mode": "ask_before_merge",
+        },
+        "reporting": {
+            "output_dir": "state/runs",
+        },
+    }
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"

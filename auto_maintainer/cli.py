@@ -6,7 +6,7 @@ from pathlib import Path
 
 from auto_maintainer.analyzer import analyze_repo
 from auto_maintainer.ci_watcher import evaluate_merge_gate, watch_and_classify
-from auto_maintainer.config import load_config
+from auto_maintainer.config import default_config_json, load_config
 from auto_maintainer.doctor import get_last_ci_status, run_doctor
 from auto_maintainer.git_ops import GitError, create_branch, current_branch, ensure_clean_worktree, push_branch, sync_status
 from auto_maintainer.github import create_draft_pr
@@ -18,7 +18,9 @@ from auto_maintainer.reporting import (
     load_plan,
     write_ci_report,
     write_handoff,
+    write_merge_gate_report,
     write_plan_report,
+    write_worker_prompt,
     write_pr_report,
     write_run_report,
 )
@@ -43,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
         return doctor_command(args)
     if args.command == "sync-status":
         return sync_status_command(args)
+    if args.command == "handoff":
+        return handoff_command(args)
+    if args.command == "init-config":
+        return init_config_command(args)
     parser.print_help()
     return 2
 
@@ -90,6 +96,9 @@ def build_parser() -> argparse.ArgumentParser:
     merge_gate = subparsers.add_parser("merge-gate", help="Check whether a PR satisfies read-only merge gates.")
     merge_gate.add_argument("--repo", required=True, help="GitHub repo in OWNER/NAME format.")
     merge_gate.add_argument("--pr", required=True, help="PR number or URL.")
+    merge_gate.add_argument("--config", type=Path, help="Optional JSON config file for report output settings.")
+    merge_gate.add_argument("--run-id", help="Run ID to write merge-gate report into.")
+    merge_gate.add_argument("--write-report", action="store_true", help="Write merge-gate report artifacts.")
     merge_gate.add_argument("--json", action="store_true")
 
     doctor = subparsers.add_parser("doctor", help="Check local environment readiness.")
@@ -103,6 +112,22 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--remote", default="origin")
     sync.add_argument("--branch", default="main")
     sync.add_argument("--json", action="store_true")
+
+    handoff = subparsers.add_parser("handoff", help="Render a saved handoff or worker prompt.")
+    handoff.add_argument("--config", type=Path, help="Optional JSON config file.")
+    handoff.add_argument("--repo", help="GitHub repo in OWNER/NAME format, used only with config overrides.")
+    handoff.add_argument("--local-path", type=Path, help="Local checkout path for prompt context.")
+    handoff.add_argument("--run-id", help="Run ID whose plan should be rendered. Defaults to latest plan.")
+    handoff.add_argument("--format", choices=["handoff", "prompt"], default="prompt")
+    handoff.add_argument("--write", action="store_true", help="Write the rendered handoff/prompt into the run directory.")
+    handoff.add_argument("--json", action="store_true")
+
+    init = subparsers.add_parser("init-config", help="Write a starter auto-maintainer config JSON file.")
+    init.add_argument("--repo", required=True, help="GitHub repo in OWNER/NAME format.")
+    init.add_argument("--local-path", type=Path, help="Target repo local path to include in the config.")
+    init.add_argument("--output", type=Path, default=Path("auto-maintainer.config.json"))
+    init.add_argument("--force", action="store_true", help="Overwrite existing config file.")
+    init.add_argument("--json", action="store_true")
     return parser
 
 
@@ -246,10 +271,19 @@ def run_command(args: argparse.Namespace) -> int:
 
 def merge_gate_command(args: argparse.Namespace) -> int:
     result = evaluate_merge_gate(args.repo, args.pr)
+    report_path = None
+    if args.write_report:
+        config = load_config(args.config, repo_slug=args.repo)
+        report_path = write_merge_gate_report(config, args.pr, result, run_id=args.run_id)
     if args.json:
+        if report_path:
+            result = dict(result)
+            result["report"] = str(report_path)
         print(json.dumps(result, indent=2))
     else:
         print(f"Ready: {result['ready']}")
+        if report_path:
+            print(f"Report: {report_path}")
         for blocker in result["blockers"]:
             print(f"Blocker: {blocker}")
     return 0 if result["ready"] else 1
@@ -316,6 +350,46 @@ def sync_status_command(args: argparse.Namespace) -> int:
             ci = result["last_ci"]
             print(f"Last CI: {ci.get('status')}/{ci.get('conclusion')} {ci.get('url', '')}".rstrip())
     return 0 if status["up_to_date"] else 1
+
+
+def handoff_command(args: argparse.Namespace) -> int:
+    repo_slug = args.repo or "local/handoff"
+    config = load_config(args.config, repo_slug=repo_slug, local_path=args.local_path)
+    plan = load_plan(config.report_dir, args.run_id)
+    if plan is None:
+        raise SystemExit("No saved plan found. Run `auto-maintainer run ... --json` first.")
+    local_path = config.repo.local_path or args.local_path or Path(".")
+    if args.write:
+        path = write_worker_prompt(config, plan, local_path, args.run_id) if args.format == "prompt" else write_handoff(config, plan, local_path, args.run_id)
+        if args.json:
+            print(json.dumps({"path": str(path), "format": args.format}, indent=2))
+        else:
+            print(path)
+        return 0
+    if args.format == "prompt":
+        from auto_maintainer.reporting import render_worker_prompt
+
+        output = render_worker_prompt(plan, local_path)
+    else:
+        from auto_maintainer.reporting import render_handoff_markdown
+
+        output = render_handoff_markdown(plan, local_path)
+    if args.json:
+        print(json.dumps({"format": args.format, "content": output}, indent=2))
+    else:
+        print(output)
+    return 0
+
+
+def init_config_command(args: argparse.Namespace) -> int:
+    if args.output.exists() and not args.force:
+        raise SystemExit(f"Config already exists: {args.output}. Use --force to overwrite.")
+    args.output.write_text(default_config_json(args.repo, args.local_path), encoding="utf-8")
+    if args.json:
+        print(json.dumps({"config": str(args.output), "outcome": "created"}, indent=2))
+    else:
+        print(args.output)
+    return 0
 
 
 if __name__ == "__main__":
