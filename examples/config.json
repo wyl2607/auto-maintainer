@@ -1,0 +1,25 @@
+{
+  "repo": {
+    "slug": "wyl2607/esg-research-toolkit",
+    "local_path": "../esg-research-toolkit",
+    "default_branch": "main"
+  },
+  "gates": {
+    "value_min": 3,
+    "risk_max": 2,
+    "complexity_max": 2,
+    "confidence_min": 2
+  },
+  "execution": {
+    "max_tasks_per_run": 1,
+    "max_ci_fix_attempts": 3,
+    "max_total_runtime_minutes": 90,
+    "require_clean_worktree": true
+  },
+  "merge": {
+    "mode": "ask_before_merge"
+  },
+  "reporting": {
+    "output_dir": "state/runs"
+  }
+}
