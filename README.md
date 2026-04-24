@@ -30,6 +30,24 @@ Requires Python 3.11+ and the GitHub CLI:
 gh auth login
 ```
 
+## MacBook Air Sync
+
+Use the MacBook Air as a controller workspace by bootstrapping from GitHub:
+
+```bash
+mkdir -p ~/Developer
+curl -fsSL https://raw.githubusercontent.com/wyl2607/auto-maintainer/main/scripts/macbook-bootstrap.sh | bash
+```
+
+After each Windows/OpenCode update is committed and pushed, sync on the MacBook Air:
+
+```bash
+cd ~/Developer/auto-maintainer
+./scripts/macbook-sync.sh
+```
+
+Details are in `docs/macbook-air-sync.md`.
+
 ## Analyze A Repo
 
 ```bash
@@ -201,7 +219,7 @@ Use JSON for the first version:
 ## Current Limitations
 
 - Read-only analysis, dry-run planning, safe branch handoff, draft PR creation, artifact bundling, and CI classification only.
-- No automatic branch creation, code edits, PR creation, or merge in v0.1.
+- No automatic code edits or merge in v0.1.
 - Security alert visibility depends on GitHub token scopes and repo settings.
 - Backlog parsing is intentionally simple and line-based.
 - CI classification uses heuristics; unknown failures are expected.
