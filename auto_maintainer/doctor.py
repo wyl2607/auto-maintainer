@@ -41,7 +41,10 @@ def check_import() -> dict[str, Any]:
 
 
 def check_gh_auth() -> dict[str, Any]:
-    result = subprocess.run(["gh", "auth", "status"], capture_output=True, check=False)
+    try:
+        result = subprocess.run(["gh", "auth", "status"], capture_output=True, check=False)
+    except FileNotFoundError:
+        return {"name": "gh auth", "ok": False, "detail": "gh not found"}
     stdout = result.stdout.decode("utf-8", errors="replace") if result.stdout else ""
     stderr = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
     return {"name": "gh auth", "ok": result.returncode == 0, "detail": (stdout or stderr).strip().splitlines()[0] if (stdout or stderr).strip() else "no output"}
