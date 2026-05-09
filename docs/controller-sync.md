@@ -1,12 +1,12 @@
-# MacBook Air Sync
+# controller workstation Sync
 
-Use the MacBook Air as the controller workspace for `auto-maintainer`. The GitHub repository is the source of truth; every update from Windows/OpenCode must be committed and pushed to `main`, then pulled on the MacBook Air.
+Use the controller workstation as the controller workspace for `auto-maintainer`. The GitHub repository is the source of truth; every update from Windows/OpenCode must be committed and pushed to `main`, then pulled on the controller workstation.
 
 ## First Setup
 
 ```bash
 mkdir -p ~/Developer
-curl -fsSL https://raw.githubusercontent.com/wyl2607/auto-maintainer/main/scripts/macbook-bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/wyl2607/auto-maintainer/main/scripts/controller-bootstrap.sh | bash
 ```
 
 Or clone manually:
@@ -25,18 +25,18 @@ python -m pytest -q
 
 ```bash
 cd ~/Developer/auto-maintainer
-./scripts/macbook-sync.sh
+./scripts/controller-sync.sh
 ```
 
-The sync script refuses to continue if the MacBook Air worktree has local uncommitted changes.
+The sync script refuses to continue if the controller workstation worktree has local uncommitted changes.
 
 ## Normal Update Flow
 
 1. Develop and test on Windows/OpenCode.
 2. Commit and push to `wyl2607/auto-maintainer`.
 3. Confirm GitHub Actions are green.
-4. On the MacBook Air, run `./scripts/macbook-sync.sh`.
-5. Use the MacBook Air copy as the controller for repo analysis and run reports.
+4. On the controller workstation, run `./scripts/controller-sync.sh`.
+5. Use the controller workstation copy as the controller for repo analysis and run reports.
 
 ## Controller Commands
 
