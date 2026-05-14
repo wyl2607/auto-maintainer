@@ -30,23 +30,23 @@ Requires Python 3.11+ and the GitHub CLI:
 gh auth login
 ```
 
-## MacBook Air Sync
+## controller workstation Sync
 
-Use the MacBook Air as a controller workspace by bootstrapping from GitHub:
+Use the controller workstation as a controller workspace by bootstrapping from GitHub:
 
 ```bash
 mkdir -p ~/Developer
-curl -fsSL https://raw.githubusercontent.com/wyl2607/auto-maintainer/main/scripts/macbook-bootstrap.sh | bash
+curl -fsSL https://raw.githubusercontent.com/wyl2607/auto-maintainer/main/scripts/controller-bootstrap.sh | bash
 ```
 
-After each Windows/OpenCode update is committed and pushed, sync on the MacBook Air:
+After each Windows/OpenCode update is committed and pushed, sync on the controller workstation:
 
 ```bash
 cd ~/Developer/auto-maintainer
-./scripts/macbook-sync.sh
+./scripts/controller-sync.sh
 ```
 
-Details are in `docs/macbook-air-sync.md`.
+Details are in `docs/controller-sync.md`.
 
 Check a machine after setup:
 
@@ -245,9 +245,9 @@ Use JSON for the first version:
     "require_clean_worktree": true
   },
   "agents": {
-    "controller": "macbook-air",
+    "controller": "local-controller",
     "worker": "opencode",
-    "reviewer": "coco"
+    "reviewer": "manual"
   },
   "merge": {
     "mode": "ask_before_merge"

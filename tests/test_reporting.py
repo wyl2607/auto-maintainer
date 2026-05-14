@@ -17,9 +17,9 @@ def make_plan() -> ExecutionPlan:
     )
     return ExecutionPlan(
         candidate=candidate,
-        controller="macbook-air",
+        controller="local-controller",
         worker="opencode",
-        reviewer="coco",
+        reviewer="manual",
         dry_run=False,
         branch_name="auto/task-1",
         verification_commands=["python -m pytest -q"],

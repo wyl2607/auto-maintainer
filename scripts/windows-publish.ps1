@@ -1,5 +1,5 @@
 param(
-    [string]$RepoPath = "C:\Users\wyl26\auto-maintainer"
+    [string]$RepoPath = (Join-Path $HOME "auto-maintainer")
 )
 
 $ErrorActionPreference = "Stop"

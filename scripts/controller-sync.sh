@@ -4,7 +4,7 @@ set -euo pipefail
 TARGET_DIR="${AUTO_MAINTAINER_TARGET_DIR:-$HOME/Developer/auto-maintainer}"
 
 if [[ ! -d "$TARGET_DIR/.git" ]]; then
-  echo "Repository not found at $TARGET_DIR. Run scripts/macbook-bootstrap.sh first." >&2
+  echo "Repository not found at $TARGET_DIR. Run scripts/controller-bootstrap.sh first." >&2
   exit 1
 fi
 

@@ -84,9 +84,9 @@ def default_config_json(repo_slug: str, local_path: Path | None = None) -> str:
             "require_clean_worktree": True,
         },
         "agents": {
-            "controller": "macbook-air",
+            "controller": "local-controller",
             "worker": "opencode",
-            "reviewer": "coco",
+            "reviewer": "manual",
         },
         "merge": {
             "mode": "ask_before_merge",
