@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from auto_maintainer.git_ops import GitError, sync_status
-from auto_maintainer.github import run_gh_json, run_gh_text
+from auto_maintainer.github import run_gh_json
 
 
 def run_doctor(repo: str | None = None, local_path: Path | None = None) -> dict[str, Any]:
