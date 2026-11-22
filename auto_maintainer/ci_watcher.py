@@ -91,19 +91,30 @@ def wait_for_pr_checks(repo: str, pr: str, *, timeout_seconds: int = 1800, poll_
     return {"status": "timeout", "checks": last_checks}
 
 
+CHECK_JSON_FIELDS = "name,state,bucket,workflow,link,startedAt,completedAt"
+BUCKET_CONCLUSIONS = {"fail": "failure", "cancel": "cancelled"}
+
+
 def collect_check_runs(repo: str, pr: str) -> list[dict[str, Any]]:
-    return run_gh_json(
-        [
-            "pr",
-            "checks",
-            pr,
-            "--repo",
-            repo,
-            "--json",
-            "name,state,conclusion,workflowName,detailsUrl,bucket,startedAt,completedAt",
-        ],
+    checks = run_gh_json(
+        ["pr", "checks", pr, "--repo", repo, "--json", CHECK_JSON_FIELDS],
         allow_failure=True,
     ) or []
+    return [normalize_check(check) for check in checks]
+
+
+def normalize_check(check: dict[str, Any]) -> dict[str, Any]:
+    """Map `gh pr checks --json` fields onto the keys the rest of the code reads.
+
+    gh exposes `workflow`, `link` and `bucket`; it has no `workflowName`,
+    `detailsUrl` or `conclusion` field (requesting them makes gh exit non-zero).
+    """
+    normalized = dict(check)
+    normalized.setdefault("workflowName", check.get("workflow"))
+    normalized.setdefault("detailsUrl", check.get("link"))
+    if not normalized.get("conclusion"):
+        normalized["conclusion"] = BUCKET_CONCLUSIONS.get(str(check.get("bucket", "")).lower())
+    return normalized
 
 
 def collect_failing_logs(repo: str, pr: str) -> list[dict[str, str]]:
